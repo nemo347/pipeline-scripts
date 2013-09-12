@@ -1,11 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<p:declare-step xmlns:p="http://www.w3.org/ns/xproc" xmlns:px="http://www.daisy.org/ns/pipeline/xproc" xmlns:cx="http://xmlcalabash.com/ns/extensions" xmlns:d="http://www.daisy.org/ns/pipeline/data" type="px:zedai-to-epub3-convert"
+<p:declare-step xmlns:p="http://www.w3.org/ns/xproc" xmlns:px="http://www.daisy.org/ns/pipeline/xproc" xmlns:cx="http://xmlcalabash.com/ns/extensions" xmlns:d="http://www.daisy.org/ns/pipeline/data" type="px:zedai-to-epub3-convert" xmlns:pxi="http://www.daisy.org/ns/pipeline/xproc/internal"
     name="zedai-to-epub3.convert" exclude-inline-prefixes="#all" version="1.0">
 
     <p:documentation> Transforms a ZedAI (DAISY 4 XML) document into an EPUB 3 publication. </p:documentation>
 
     <p:input port="fileset.in" primary="true"/>
     <p:input port="in-memory.in" sequence="true"/>
+    <p:input port="audio-map" sequence="true"/> <!-- 0 or 1 document -->
 
     <p:output port="fileset.out" primary="true">
         <p:pipe port="result" step="ocf"/>
@@ -21,6 +22,7 @@
     <p:import href="http://www.daisy.org/pipeline/modules/epub3-pub-utils/library.xpl"/>
     <p:import href="http://www.daisy.org/pipeline/modules/fileset-utils/library.xpl"/>
     <p:import href="http://xmlcalabash.com/extension/steps/library-1.0.xpl"/>
+    <p:import href="http://www.daisy.org/pipeline/modules/ssml-to-audio/create-audio-fileset.xpl" />
 
     <p:variable name="epub-dir" select="concat($output-dir,'epub/')"/>
     <p:variable name="content-dir" select="concat($epub-dir,'EPUB/')"/>
@@ -250,6 +252,65 @@
         </p:group>
     </p:group>
 
+    <p:count limit="1">
+      <p:input port="source">
+	<p:pipe port="audio-map" step="zedai-to-epub3.convert"/>
+      </p:input>
+    </p:count>
+    <p:choose name="media-overlays">
+      <p:when test="/*=0">
+	<p:output port="audio-fileset">
+	  <p:pipe port="result" step="empty-fileset"/>
+	</p:output>
+	<p:output port="mo-fileset">
+	  <p:pipe port="result" step="empty-fileset"/>
+	</p:output>
+	<p:output port="in-memory.out" sequence="true">
+	  <p:empty/>
+	</p:output>
+	<px:fileset-create name="empty-fileset"/>
+      </p:when>
+      <p:otherwise>
+	<p:output port="audio-fileset">
+	  <p:pipe port="fileset.out" step="audio-fileset"/>
+	</p:output>
+	<p:output port="mo-fileset">
+	  <p:pipe port="fileset.out" step="create-mo"/>
+	</p:output>
+	<p:output port="in-memory.out" sequence="true">
+	  <p:pipe port="in-memory.out" step="create-mo"/>
+	</p:output>
+	<px:fileset-join name="content-fileset">
+	  <p:input port="source">
+	    <p:pipe port="result" step="zedai-to-html"/>
+	    <p:pipe port="result" step="navigation-doc"/>
+	  </p:input>
+	</px:fileset-join>
+	<pxi:create-mediaoverlays name="create-mo">
+	  <p:input port="fileset.in">
+	    <p:pipe port="result" step="content-fileset"/>
+	  </p:input>
+	  <p:input port="content-docs">
+	    <p:pipe port="html-file" step="navigation-doc"/>
+	    <p:pipe port="html-files" step="zedai-to-html"/>
+	  </p:input>
+	  <p:input port="audio-map">
+	    <p:pipe port="audio-map" step="zedai-to-epub3.convert"/>
+	  </p:input>
+	  <p:with-option name="content-dir" select="$content-dir"/>
+	</pxi:create-mediaoverlays>
+	<cx:message message="media overlay documents created"/><p:sink/>
+	<px:create-audio-fileset name="audio-fileset">
+	  <p:input port="source">
+	    <p:pipe port="audio-map" step="zedai-to-epub3.convert"/>
+	  </p:input>
+	  <p:with-option name="output-dir" select="$content-dir"/>
+	  <p:with-option name="audio-relative-dir" select="'audio/'"/>
+	</px:create-audio-fileset>
+	<cx:message message="audio fileset created"/><p:sink/>
+      </p:otherwise>
+    </p:choose>
+
     <!--=========================================================================-->
     <!-- GENERATE THE PACKAGE DOCUMENT                                           -->
     <!--=========================================================================-->
@@ -305,6 +366,8 @@
                 <p:pipe port="result" step="zedai-to-html"/>
                 <p:pipe port="result" step="navigation-doc"/>
                 <p:pipe port="result" step="resources"/>
+		<p:pipe port="mo-fileset" step="media-overlays"/>
+		<p:pipe port="audio-fileset" step="media-overlays"/>
             </p:input>
         </px:fileset-join>
         <p:sink/>
@@ -316,7 +379,11 @@
             </p:input>
             <p:input port="publication-resources">
                 <p:pipe port="result" step="resources"/>
+		<p:pipe port="audio-fileset" step="media-overlays"/>
             </p:input>
+	    <p:input port="mediaoverlays">
+	      <p:pipe port="in-memory.out" step="media-overlays"/>
+	    </p:input>
             <p:input port="metadata">
                 <p:pipe port="result" step="metadata"/>
             </p:input>
@@ -348,6 +415,7 @@
                 <p:pipe step="package-doc" port="opf"/>
                 <p:pipe step="navigation-doc" port="html-file"/>
                 <p:pipe step="zedai-to-html" port="html-files"/>
+		<p:pipe step="media-overlays" port="in-memory.out"/>
             </p:input>
         </p:wrap-sequence>
         <p:delete match="/*/*/*" name="wrapped-in-memory"/>
@@ -403,6 +471,7 @@
             <p:pipe step="package-doc" port="opf"/>
             <p:pipe step="navigation-doc" port="html-file"/>
             <p:pipe step="zedai-to-html" port="html-files"/>
+	    <p:pipe port="in-memory.out" step="media-overlays"/>
         </p:iteration-source>
         <p:variable name="doc-base" select="base-uri(/*)"/>
         <p:choose>

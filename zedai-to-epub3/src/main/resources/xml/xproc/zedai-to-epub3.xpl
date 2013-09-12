@@ -72,6 +72,9 @@
             <p:input port="in-memory.in">
                 <p:pipe port="in-memory.out" step="load"/>
             </p:input>
+	    <p:input port="audio-map">
+	      <p:empty/> <!-- TODO: provide an audio map when the TTS option is ON -->
+	    </p:input>
             <p:with-option name="output-dir" select="$output-dir-uri"/>
         </px:zedai-to-epub3-convert>
         
