@@ -170,7 +170,7 @@
         <!--TODO better handle core media type filtering-->
         <!--TODO copy/translate CSS ?-->
         <p:delete name="filtered-zedai-fileset"
-            match="d:file[not(@media-type=('application/z3998-auth+xml','application/smil+xml',
+            match="d:file[not(@media-type=('application/z3998-auth+xml',
             'image/gif','image/jpeg','image/png','image/svg+xml',
             'application/pls+xml',
             'audio/mpeg','audio/mp4','text/javascript'))]"/>
